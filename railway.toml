@@ -3,7 +3,7 @@ builder = "nixpacks"
 buildCommand = "pip install -r requirements.txt"
 
 [deploy]
-startCommand = "python -m bot.main"
+startCommand = "python -m main"
 healthcheckPath = "/"
 healthcheckPort = 8080
 

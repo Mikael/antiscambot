@@ -320,13 +320,7 @@ class MessageModerationHandler:
     ) -> ModerateResult:
         """Apply moderation with progressive discipline"""
         
-        # Check cooldown for this user
         user_key = (message.guild.id, message.author.id)
-        last_action = self._user_last_action.get(message.author.id)
-        if last_action and (datetime.utcnow() - last_action).total_seconds() < self.USER_ACTION_COOLDOWN:
-            LOGGER.debug("User %s on cooldown, skipping actions", message.author.id)
-            return ModerateResult(False, "cooldown", score=score)
-            
         # Track infraction
         tracker = self._user_infractions[user_key]
         tracker.add_infraction(score)

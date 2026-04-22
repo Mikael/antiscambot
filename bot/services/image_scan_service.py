@@ -66,7 +66,7 @@ CORE_SCAM_PHRASES = (
     "reward received", "wallet connect", "crypto bonus", "bonus code",
     "congratulations", "promo code", "limited time", "million users",
     "celebration promotion", "you are the lucky", "prize credited",
-    "withdraw your funds", "account balance", "free bonus",
+    "withdraw your funds", "account balance", "free bonus", "celebration promotion", "million usesrs", "users celebration", "congratulation", "reward", "prize", "winner", "celebration",
 )
 
 # Expanded core scam tokens
@@ -267,6 +267,40 @@ class ImageScanService:
         """Perform OCR with multiple preprocessing strategies"""
         results = []
         
+        # FaceVet text overlay detection (if available)
+        try:
+            from face_vet import ImageAnalyzer
+            analyzer = ImageAnalyzer()
+            
+            # Analyze image for overlaid text
+            analysis = analyzer.analyze_image(np.array(img))
+            
+            if analysis.has_overlaid_text:
+                # Extract overlaid text regions
+                for text_region in analysis.text_regions:
+                    extracted_text = analyzer.extract_text(text_region)
+                    if extracted_text and len(extracted_text.strip()) > 3:
+                        results.append(OCRResult(
+                            text=extracted_text,
+                            confidence=analysis.text_confidence,
+                            method='facevet_overlay'
+                        ))
+                        
+                LOGGER.info(f"FaceVet detected {len(analysis.text_regions)} text regions")
+        except ImportError:
+            LOGGER.debug("face-vet not available, skipping overlay detection")
+        except Exception as e:
+            LOGGER.debug(f"FaceVet analysis failed: {e}")
+        
+        # Add a method specifically for text overlays on images
+        try:
+            processed_overlay = self._preprocess_for_overlay_text(img)
+            text_overlay = self._run_tesseract(processed_overlay, psm=6, oem=1)
+            if text_overlay and len(text_overlay) > 20:
+                results.append(OCRResult(text=text_overlay, confidence=0.7, method='overlay_text'))
+        except Exception as e:
+            LOGGER.debug(f"Overlay text preprocessing failed: {e}")
+        
         # Strategy 1: Standard preprocessing (PSM 6 - block text)
         processed1 = self._preprocess_image(img, method='standard')
         text1 = self._run_tesseract(processed1, psm=6, oem=1)
@@ -275,7 +309,7 @@ class ImageScanService:
             
         # Strategy 2: High contrast + threshold (PSM 11 - sparse text)
         processed2 = self._preprocess_image(img, method='high_contrast')
-        text2 = self._run_tesseract(processed2, psm=11, oem=1)
+        text2 = self._run_tesseract(processed2, psm=11, oem=3)
         if text2:
             results.append(OCRResult(text=text2, confidence=0.75, method='contrast_psm11'))
             
@@ -285,21 +319,33 @@ class ImageScanService:
         if text3:
             results.append(OCRResult(text=text3, confidence=0.8, method='upscaled_psm4'))
             
-        # Strategy 4: Adaptive thresholding for complex backgrounds (skip if scipy not available)
+        # Strategy 4: Single text line (PSM 7) - for headings
+        processed4 = self._preprocess_image(img, method='high_contrast')
+        text4 = self._run_tesseract(processed4, psm=7, oem=3)
+        if text4:
+            results.append(OCRResult(text=text4, confidence=0.8, method='single_line_psm7'))
+            
+        # Strategy 5: Single word (PSM 8) - for important keywords
+        processed5 = self._preprocess_image(img, method='upscaled')
+        text5 = self._run_tesseract(processed5, psm=8, oem=3)
+        if text5:
+            results.append(OCRResult(text=text5, confidence=0.7, method='single_word_psm8'))
+            
+        # Strategy 6: Adaptive thresholding for complex backgrounds (skip if scipy not available)
         try:
-            processed4 = self._preprocess_image(img, method='adaptive')
-            text4 = self._run_tesseract(processed4, psm=6, oem=3)  # OEM 3 = default + LSTM
-            if text4:
-                results.append(OCRResult(text=text4, confidence=0.85, method='adaptive_psm6'))
+            processed6 = self._preprocess_image(img, method='adaptive')
+            text6 = self._run_tesseract(processed6, psm=6, oem=3)  # OEM 3 = default + LSTM
+            if text6:
+                results.append(OCRResult(text=text6, confidence=0.85, method='adaptive_psm6'))
         except Exception as e:
             LOGGER.debug(f"Adaptive preprocessing failed: {e}")
             
-        # Strategy 5: Aggressive preprocessing for low-quality images
+        # Strategy 7: Aggressive preprocessing for low-quality images
         if self._aggressive_mode:
-            processed5 = self._preprocess_image(img, method='aggressive')
-            text5 = self._run_tesseract(processed5, psm=3, oem=1)  # PSM 3 = fully automatic
-            if text5:
-                results.append(OCRResult(text=text5, confidence=0.6, method='aggressive_psm3'))
+            processed7 = self._preprocess_image(img, method='aggressive')
+            text7 = self._run_tesseract(processed7, psm=3, oem=1)  # PSM 3 = fully automatic
+            if text7:
+                results.append(OCRResult(text=text7, confidence=0.6, method='aggressive_psm3'))
                 
         return results
         
@@ -311,10 +357,18 @@ class ImageScanService:
             img = img.convert('RGB')
             
         if method == 'standard':
-            # Basic preprocessing
+            # Try to detect and handle light text on light backgrounds
             gray = ImageOps.grayscale(img)
-            contrast = ImageEnhance.Contrast(gray).enhance(1.6)
-            return contrast.filter(ImageFilter.SHARPEN)
+            
+            # Check if image is mostly light (background)
+            img_array = np.array(gray)
+            if np.mean(img_array) > 200:  # Very light image
+                # Invert to make dark text on light background
+                gray = ImageOps.invert(gray)
+            
+            contrast = ImageEnhance.Contrast(gray).enhance(2.0)
+            brightness = ImageEnhance.Brightness(contrast).enhance(1.2)
+            return brightness.filter(ImageFilter.SHARPEN)
             
         elif method == 'high_contrast':
             # High contrast with threshold
@@ -349,17 +403,13 @@ class ImageScanService:
             return sharpened.point(lambda px: 255 if px > 150 else 0)
             
         elif method == 'adaptive':
-            # Adaptive thresholding using numpy (no scipy dependency)
             gray = ImageOps.grayscale(img)
             img_array = np.array(gray, dtype=np.float32)
             
-            # Simple Gaussian blur using numpy
-            from scipy import ndimage  # type: ignore
             try:
+                from scipy import ndimage  # type: ignore[import]
                 blurred = ndimage.gaussian_filter(img_array, sigma=1)
             except ImportError:
-                # Fallback to PIL's GaussianBlur if scipy not available
-                from PIL import ImageFilter
                 blurred_img = gray.filter(ImageFilter.GaussianBlur(radius=1))
                 blurred = np.array(blurred_img, dtype=np.float32)
             
@@ -390,14 +440,57 @@ class ImageScanService:
             
         return ImageOps.grayscale(img)
         
-    def _run_tesseract(self, img: Image.Image, psm: int, oem: int) -> str:
-        """Run Tesseract OCR with specific parameters"""
+    def _preprocess_for_overlay_text(self, img: Image.Image) -> Image.Image:
+        """Special preprocessing for text overlays on complex backgrounds"""
+        gray = ImageOps.grayscale(img)
+        
+        # Try multiple thresholding approaches
+        img_array = np.array(gray)
+        
+        # Adaptive threshold with large block size
         try:
-            whitelist_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789$.,!?@#$%^&*()-=+[]{};:'\"<>/\\|`~ "
-            config = f"--oem {oem} --psm {psm} -c tessedit_char_whitelist=\"{whitelist_chars}\""
+            from scipy import ndimage
+            blurred = ndimage.gaussian_filter(img_array, sigma=3)
+            
+            # Detect text by looking for edges
+            from scipy import signal
+            sobel_x = signal.convolve2d(img_array, [[-1,0,1],[-2,0,2],[-1,0,1]], mode='same')
+            sobel_y = signal.convolve2d(img_array, [[-1,-2,-1],[0,0,0],[1,2,1]], mode='same')
+            edges = np.hypot(sobel_x, sobel_y)
+            
+            # Boost areas with high edge density (likely text)
+            threshold = np.percentile(edges, 85)
+            text_regions = edges > threshold
+            
+            # Create binary image focusing on text regions
+            result = np.zeros_like(img_array)
+            result[text_regions] = img_array[text_regions]
+            
+            # Enhance contrast in text regions
+            result = result.astype(np.uint8)
+            result = np.clip(result * 2, 0, 255).astype(np.uint8)
+            
+            return Image.fromarray(result)
+        except ImportError:
+            # Fallback if scipy not available
+            return self._preprocess_image(img, method='high_contrast')
+        
+    def _run_tesseract(self, img: Image.Image, psm: int, oem: int) -> str:
+        try:
+            # Don't restrict characters - let Tesseract handle it
+            # Remove the whitelist entirely for better results
+            config = f"--oem {oem} --psm {psm}"
             text = pytesseract.image_to_string(img, lang='eng', config=config)
+            
+            # Debug: Save what Tesseract saw
+            if text and len(text.strip()) > 0:
+                LOGGER.info(f"Tesseract (psm={psm}) extracted: {text[:200]}")
+            else:
+                LOGGER.debug(f"Tesseract (psm={psm}) returned empty")
+                
             return text.strip() if text else ""
-        except Exception:
+        except Exception as e:
+            LOGGER.warning(f"Tesseract OCR failed: {e}")
             return ""
             
     def _merge_ocr_results(self, results: List[OCRResult]) -> str:
@@ -520,19 +613,11 @@ class ImageScanService:
                 matched_patterns.append(label)
                 
         # 10. Special detection for promotion/celebration scams
-        promo_indicators = [
-            "congratulation", "reward", "prize", "winner", "celebration",
-            "million users", "promo code", "bonus code", "limited time"
-        ]
+        promo_indicators = list(rules.blocked_words)
         promo_hits = sum(1 for ind in promo_indicators if ind in lowered)
         if promo_hits >= 3:
             score += 4
             reasons.append(f"promotion_scam:{promo_hits}")
-            
-        # 11. Boost score if multiple OCR methods detected text (increases confidence)
-        if len(ocr_results) >= 3:
-            score += 1
-            reasons.append("multi_method_ocr_confirmation")
             
         # Cap score at reasonable maximum
         score = min(score, 25)

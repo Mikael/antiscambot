@@ -4,6 +4,13 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
+try:
+    from dotenv import load_dotenv
+    # Load .env file if present (local development only, Railway does not need this)
+    load_dotenv()
+except ImportError:
+    pass
+
 
 @dataclass
 class BotConfig:

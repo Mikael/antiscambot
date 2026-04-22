@@ -20,10 +20,12 @@ Admins control behavior per server:
 - Timeout offending users (`timeout_enabled`, `timeout_minutes`)
 - Optional alert channel for moderation events (`alert_enabled`, `alert_channel`)
 - Optional owner report submission via webhook (`report_to_owner_enabled`)
+- Optional DM safety warning to users caught posting scam images (`dm_user_warning_enabled`)
 
 Commands:
 - `/setupbot` - Initial setup and moderation options (admin only)
 - `/antiscam-settings` - Update settings after setup (admin only)
+- Both commands now include an option to DM users with account safety advice after detection
 
 ## Architecture
 - `main.py` - Bot startup, dependency wiring, command registration

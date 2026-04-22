@@ -64,6 +64,7 @@ class MessageModerationHandler:
                 timeout_applied = await self._apply_timeout(message, guild_config.timeout_enabled, guild_config.timeout_minutes)
                 await self._notify_channel(message, result, guild_config, deleted, timeout_applied)
                 await self._report_to_owner_webhook(message, result, guild_config, deleted, timeout_applied)
+                await self._dm_user_warning(message, guild_config.dm_user_warning_enabled)
                 return ModerateResult(deleted, f"scam_score_{result.score}")
 
         return ModerateResult(False, "clean")
@@ -160,4 +161,20 @@ class MessageModerationHandler:
                 webhook = discord.Webhook.from_url(self._owner_report_webhook_url, session=session)
                 await webhook.send(embed=embed, username="AntiScam Reporter")
         except Exception:
+            return
+
+    async def _dm_user_warning(self, message: discord.Message, enabled: bool) -> None:
+        if not enabled:
+            return
+        if not isinstance(message.author, discord.Member):
+            return
+
+        text = (
+            "Your recent image was flagged as a possible crypto scam and was handled by server moderation. "
+            "If your account might be compromised, change your Discord password immediately, "
+            "enable 2FA, and review authorized apps/devices."
+        )
+        try:
+            await message.author.send(text)
+        except discord.Forbidden:
             return

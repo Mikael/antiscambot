@@ -13,6 +13,7 @@ class GuildConfig:
     alert_enabled: bool = False
     alert_channel_id: int | None = None
     report_to_owner_enabled: bool = False
+    dm_user_warning_enabled: bool = False
 
     @classmethod
     def from_dict(cls, payload: dict) -> "GuildConfig":
@@ -29,6 +30,7 @@ class GuildConfig:
                 else None
             ),
             report_to_owner_enabled=bool(payload.get("report_to_owner_enabled", False)),
+            dm_user_warning_enabled=bool(payload.get("dm_user_warning_enabled", False)),
         )
 
     def to_dict(self) -> dict:
@@ -41,4 +43,5 @@ class GuildConfig:
             "alert_enabled": self.alert_enabled,
             "alert_channel_id": self.alert_channel_id,
             "report_to_owner_enabled": self.report_to_owner_enabled,
+            "dm_user_warning_enabled": self.dm_user_warning_enabled,
         }

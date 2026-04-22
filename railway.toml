@@ -6,6 +6,7 @@ buildCommand = "pip install -r requirements.txt"
 startCommand = "python -m main"
 healthcheckPath = "/"
 healthcheckPort = 8080
+healthcheckEnabled = false
 
 [env]
 PORT = "8080"

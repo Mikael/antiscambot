@@ -1,52 +1,70 @@
 # Discord Anti-Scam Bot
 
-Fast multi-guild Discord bot that scans image attachments with OCR and deletes likely bitcoin/crypto scam screenshots.
+AntiScamBot is a multi-guild Discord moderation bot focused on detecting and handling bitcoin/crypto scam images.
 
-## Features
-- Multi-guild support with persistent per-guild setup state
-- Mandatory server setup flow (`/setupbot`) before moderation begins
-- On guild join: setup state defaults to false, owner gets a DM explaining setup
-- Admin-only setup and config commands (`/setupbot`, `/antiscam-settings`)
-- Per-guild actions: auto-delete, optional timeout duration, optional alert channel
-- Concurrent image scanning using a thread pool for OCR-heavy workloads
-- Real-time MongoDB-backed scam rules with periodic hot refresh
-- Clean handler/event/service architecture for easy extension
+## What the bot does
+- Scans image attachments with OCR (Tesseract) to extract text.
+- Matches extracted text against scam detection rules stored in MongoDB.
+- Uses a score threshold to decide whether an image is likely a scam.
+- Supports real-time rule updates from MongoDB (hot refresh) without code edits.
+- Does **not** moderate images in a guild until that guild is set up.
 
-## Install
-1. Install Python 3.11+
-2. Install Tesseract OCR and ensure it is in PATH
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Copy `config.example.ini` to `config.ini` and edit values:
+## Guild setup flow
+- When the bot joins a guild, it creates a guild config with `is_guild_setup = false`.
+- The guild owner is DM'd and told to run `/setupbot`.
+- Only admins can run setup/config commands.
+
+## Per-guild moderation behavior
+Admins control behavior per server:
+- Auto-delete scam messages (`auto_delete`)
+- Timeout offending users (`timeout_enabled`, `timeout_minutes`)
+- Optional alert channel for moderation events (`alert_enabled`, `alert_channel`)
+
+Commands:
+- `/setupbot` - Initial setup and moderation options (admin only)
+- `/antiscam-settings` - Update settings after setup (admin only)
+
+## Architecture
+- `main.py` - Bot startup, dependency wiring, command registration
+- `bot/handlers/` - Slash command + moderation handlers
+- `bot/events/` - Discord event handlers (`on_guild_join`, `on_message`)
+- `bot/services/` - OCR scanning logic
+- `bot/storage/` - MongoDB-backed guild config and scam rule repository
+- `bot/models/` - Typed data models
+- `seed_rules.py` - Seeds default scam rules into MongoDB
+
+## Configuration
+1. Copy template config:
    ```bash
    copy config.example.ini config.ini
    ```
+2. Fill in `config.ini` values:
+   - `discord.token`
+   - `mongodb.uri`
+   - `mongodb.database` (default in project: `antiscambot`)
+   - optional collection names / OCR settings
 
-## Seed Rules (first run)
-```bash
-python seed_rules.py
-```
+Sensitive values are loaded from `config.ini` (ignored by git), not hardcoded in source.
 
-## Commands
-- `/setupbot` - initial setup with moderation actions and alert channel options (admin only)
-- `/antiscam-settings` - update server moderation behavior after setup (admin only)
+## Install and run
+1. Install Python 3.11+
+2. Install Tesseract OCR and add it to PATH
+3. Install dependencies:
+   ```bash
+   python -m pip install -r requirements.txt
+   ```
+4. Seed default scam rules (first run):
+   ```bash
+   python seed_rules.py
+   ```
+5. Start bot:
+   ```bash
+   python main.py
+   ```
 
-## Run
-```bash
-python main.py
-```
-
-## Required Bot Privileges
-- Manage Messages (to delete scam messages)
-- Read Message History / View Channels
-- Message Content Intent enabled in Discord Developer Portal
-
-## Project Layout
-- `main.py` - app entrypoint and event wiring
-- `bot/handlers/` - moderation and slash command handlers
-- `bot/events/` - Discord event handlers
-- `bot/services/` - OCR and scam analysis logic
-- `bot/storage/` - MongoDB persistence for guild state and scam rule cache
-- `bot/models/` - data models
+## Required Discord permissions
+- View Channels
+- Read Message History
+- Manage Messages (for auto-delete)
+- Moderate Members (for timeout)
+- Message Content intent enabled in the Developer Portal

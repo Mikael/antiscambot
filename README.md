@@ -7,6 +7,7 @@ AntiScamBot is a multi-guild Discord moderation bot focused on detecting and han
 - Matches extracted text against scam detection rules stored in MongoDB.
 - Uses a score threshold to decide whether an image is likely a scam.
 - Supports real-time rule updates from MongoDB (hot refresh) without code edits.
+- Uses auto-sharding (`AutoShardedBot`) to scale across larger guild counts.
 - Does **not** moderate images in a guild until that guild is set up.
 
 ## Guild setup flow
@@ -52,16 +53,28 @@ Sensitive values are loaded from `config.ini` (ignored by git), not hardcoded in
 
 ## Install and run
 1. Install Python 3.11+
-2. Install Tesseract OCR and add it to PATH
+2. Install Tesseract OCR:
+   - Windows (winget): `winget install UB-Mannheim.TesseractOCR`
+   - Ubuntu/Debian: `sudo apt update && sudo apt install -y tesseract-ocr`
+   - Ensure `tesseract --version` works in your shell
 3. Install dependencies:
    ```bash
    python -m pip install -r requirements.txt
    ```
-4. Seed default scam rules (first run):
+4. Optional override if auto-detect fails:
+   - Set `ocr.tesseract_cmd` in `config.ini` (supports env var expansion)
+   - Or set `TESSERACT_CMD` env var
+5. Seed default scam rules (first run):
    ```bash
    python seed_rules.py
    ```
-5. Start bot:
+6. (Optional) mine conservative candidate rules from `pics/`:
+   ```bash
+   python mine_rules_from_pics.py
+   python mine_rules_from_pics.py --apply
+   ```
+   The miner is intentionally conservative and requires repeated sightings before inserting candidates.
+7. Start bot:
    ```bash
    python main.py
    ```

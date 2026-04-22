@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from datetime import datetime
 
 import discord
 from discord.ext import commands
@@ -11,6 +12,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from bot.core.settings import load_settings
 from bot.events.guild_lifecycle import GuildLifecycleEventHandler
 from bot.events.message_create import MessageCreateEventHandler
+from bot.handlers.help_command_handler import HelpCommandHandler
 from bot.handlers.message_moderation_handler import MessageModerationHandler
 from bot.handlers.setup_command_handler import SetupCommandHandler
 from bot.services.image_scan_service import ImageScanService
@@ -22,14 +24,14 @@ def _sanitize_error_message(message: str) -> str:
     return re.sub(r"mongodb(?:\+srv)?://[^\s\"']+", "mongodb://<redacted>", message, flags=re.IGNORECASE)
 
 
-class AntiScamBot(commands.Bot):
+class AntiScamBot(commands.AutoShardedBot):
     def __init__(self) -> None:
         intents = discord.Intents.default()
         intents.guilds = True
         intents.guild_messages = True
         intents.message_content = True
 
-        super().__init__(command_prefix="!", intents=intents)
+        super().__init__(command_prefix="!", intents=intents, shard_count=None)
 
         self.settings = load_settings()
         self.mongo_client = AsyncIOMotorClient(self.settings.mongodb_uri)
@@ -68,12 +70,17 @@ class AntiScamBot(commands.Bot):
         self._guild_handler = GuildLifecycleEventHandler(self.config_store)
 
         setup_handler = SetupCommandHandler(self.config_store)
+        help_handler = HelpCommandHandler()
         self.tree.add_command(setup_handler.build_setup())
         self.tree.add_command(setup_handler.build_settings())
+        self.tree.add_command(help_handler.build())
         await self.tree.sync()
 
     async def on_ready(self) -> None:
-        logging.info("Bot online as %s", self.user)
+        guild_count = len(self.guilds)
+        user_tag = str(self.user) if self.user else "unknown-user"
+        shard_total = self.shard_count or 1
+        logging.info("AntiScamBot online | user=%s | guilds=%s | shards=%s", user_tag, guild_count, shard_total)
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         if self._guild_handler is None:
@@ -92,11 +99,37 @@ class AntiScamBot(commands.Bot):
         await super().close()
 
 
+class FancyLogFormatter(logging.Formatter):
+    LEVEL_STYLES = {
+        logging.DEBUG: "DBG",
+        logging.INFO: "INF",
+        logging.WARNING: "WRN",
+        logging.ERROR: "ERR",
+        logging.CRITICAL: "CRT",
+    }
+
+    def format(self, record: logging.LogRecord) -> str:
+        ts = datetime.now().strftime("%H:%M:%S")
+        level = self.LEVEL_STYLES.get(record.levelno, "LOG")
+        name = record.name.rsplit(".", 1)[-1]
+        message = record.getMessage()
+        return f"[{ts}] [{level}] {name}: {message}"
+
+
 def configure_logging() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    )
+    formatter = FancyLogFormatter()
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    root.handlers.clear()
+
+    stream = logging.StreamHandler()
+    stream.setFormatter(formatter)
+    root.addHandler(stream)
+
+    logging.getLogger("discord").setLevel(logging.WARNING)
+    logging.getLogger("discord.gateway").setLevel(logging.WARNING)
+    logging.getLogger("discord.client").setLevel(logging.WARNING)
 
 
 def main() -> None:

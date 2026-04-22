@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from bot.core.settings import load_settings
@@ -85,7 +84,8 @@ async def seed_rules() -> None:
     client = AsyncIOMotorClient(settings.mongodb_uri)
 
     try:
-        collection = client[settings.mongodb_database][settings.scam_rules_collection]
+        database = client[settings.mongodb_database]
+        collection = database[settings.scam_rules_collection]
         docs = []
 
         docs.extend({"kind": "blocked_domain", "value": value} for value in DEFAULT_BLOCKED_DOMAINS)
@@ -116,7 +116,9 @@ async def seed_rules() -> None:
 
             await collection.update_one(query, {"$setOnInsert": doc}, upsert=True)
 
-        print(f"Seed completed: {len(docs)} rules ensured in {settings.mongodb_database}.{settings.scam_rules_collection}")
+        print(
+            f"Seed completed: {len(docs)} rules ensured in {settings.mongodb_database}.{settings.scam_rules_collection}."
+        )
     finally:
         client.close()
 

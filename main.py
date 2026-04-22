@@ -61,6 +61,7 @@ class AntiScamBot(commands.Bot):
             config_store=self.config_store,
             image_scanner=self.image_scanner,
             threshold=self.settings.scam_threshold,
+            owner_report_webhook_url=self.settings.owner_report_webhook_url,
         )
 
         self._message_handler = MessageCreateEventHandler(moderation)

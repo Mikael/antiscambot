@@ -19,6 +19,7 @@ Admins control behavior per server:
 - Auto-delete scam messages (`auto_delete`)
 - Timeout offending users (`timeout_enabled`, `timeout_minutes`)
 - Optional alert channel for moderation events (`alert_enabled`, `alert_channel`)
+- Optional owner report submission via webhook (`report_to_owner_enabled`)
 
 Commands:
 - `/setupbot` - Initial setup and moderation options (admin only)
@@ -43,6 +44,7 @@ Commands:
    - `mongodb.uri`
    - `mongodb.database` (default in project: `antiscambot`)
    - optional collection names / OCR settings
+- `integrations.owner_report_webhook_url` for owner report submissions
 
 Sensitive values are loaded from `config.ini` (ignored by git), not hardcoded in source.
 

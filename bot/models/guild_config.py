@@ -12,6 +12,7 @@ class GuildConfig:
     timeout_minutes: int = 10
     alert_enabled: bool = False
     alert_channel_id: int | None = None
+    report_to_owner_enabled: bool = False
 
     @classmethod
     def from_dict(cls, payload: dict) -> "GuildConfig":
@@ -27,6 +28,7 @@ class GuildConfig:
                 if payload.get("alert_channel_id") is not None
                 else None
             ),
+            report_to_owner_enabled=bool(payload.get("report_to_owner_enabled", False)),
         )
 
     def to_dict(self) -> dict:
@@ -38,4 +40,5 @@ class GuildConfig:
             "timeout_minutes": self.timeout_minutes,
             "alert_enabled": self.alert_enabled,
             "alert_channel_id": self.alert_channel_id,
+            "report_to_owner_enabled": self.report_to_owner_enabled,
         }

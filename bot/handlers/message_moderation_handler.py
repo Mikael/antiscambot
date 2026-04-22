@@ -24,11 +24,13 @@ class MessageModerationHandler:
         config_store: GuildConfigStore,
         image_scanner: ImageScanService,
         threshold: int,
+        owner_report_webhook_url: str | None,
     ) -> None:
         self._bot_user_id = bot_user_id
         self._config_store = config_store
         self._image_scanner = image_scanner
         self._threshold = threshold
+        self._owner_report_webhook_url = owner_report_webhook_url
         self._download_limit = 6 * 1024 * 1024
 
     async def handle(self, message: discord.Message) -> ModerateResult:
@@ -61,6 +63,7 @@ class MessageModerationHandler:
                 deleted = await self._apply_delete(message, guild_config.auto_delete)
                 timeout_applied = await self._apply_timeout(message, guild_config.timeout_enabled, guild_config.timeout_minutes)
                 await self._notify_channel(message, result, guild_config, deleted, timeout_applied)
+                await self._report_to_owner_webhook(message, result, guild_config, deleted, timeout_applied)
                 return ModerateResult(deleted, f"scam_score_{result.score}")
 
         return ModerateResult(False, "clean")
@@ -124,4 +127,37 @@ class MessageModerationHandler:
         try:
             await channel.send(details)
         except discord.Forbidden:
+            return
+
+    async def _report_to_owner_webhook(self, message: discord.Message, result, guild_config, deleted: bool, timeout_applied: bool) -> None:
+        if not guild_config.report_to_owner_enabled:
+            return
+        if not self._owner_report_webhook_url:
+            return
+
+        reasons = ", ".join(result.reasons) if result.reasons else "none"
+        attachments = "\n".join(a.url for a in message.attachments if self._is_image(a))
+
+        embed = discord.Embed(
+            title="Scam Report Submission",
+            color=discord.Color.orange(),
+            description="A guild enabled owner reporting for a detected scam image.",
+        )
+        embed.add_field(name="Guild", value=f"{message.guild.name} (`{message.guild.id}`)", inline=False)
+        embed.add_field(name="User", value=f"{message.author} (`{message.author.id}`)", inline=False)
+        embed.add_field(name="Channel", value=f"{message.channel.mention} (`{message.channel.id}`)", inline=False)
+        embed.add_field(name="Score", value=str(result.score), inline=True)
+        embed.add_field(name="Deleted", value=str(deleted), inline=True)
+        embed.add_field(name="Timeout", value=str(timeout_applied), inline=True)
+        embed.add_field(name="Reasons", value=reasons[:1024], inline=False)
+        if attachments:
+            embed.add_field(name="Image URLs", value=attachments[:1024], inline=False)
+
+        try:
+            import aiohttp
+
+            async with aiohttp.ClientSession() as session:
+                webhook = discord.Webhook.from_url(self._owner_report_webhook_url, session=session)
+                await webhook.send(embed=embed, username="AntiScam Reporter")
+        except Exception:
             return

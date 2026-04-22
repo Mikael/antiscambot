@@ -16,6 +16,7 @@ class Settings:
     guild_config_collection: str
     scam_rules_collection: str
     rule_refresh_interval_seconds: int
+    owner_report_webhook_url: str | None
 
 
 def load_settings(config_path: str = "config.ini") -> Settings:
@@ -44,6 +45,7 @@ def load_settings(config_path: str = "config.ini") -> Settings:
 
     tesseract_cmd = parser.get("ocr", "tesseract_cmd", fallback="").strip() or None
     workers_raw = parser.get("ocr", "workers", fallback="").strip()
+    owner_report_webhook_url = parser.get("integrations", "owner_report_webhook_url", fallback="").strip() or None
 
     return Settings(
         discord_token=token,
@@ -55,4 +57,5 @@ def load_settings(config_path: str = "config.ini") -> Settings:
         guild_config_collection=guild_config_collection,
         scam_rules_collection=scam_rules_collection,
         rule_refresh_interval_seconds=max(5, parser.getint("moderation", "rule_refresh_interval_seconds", fallback=30)),
+        owner_report_webhook_url=owner_report_webhook_url,
     )

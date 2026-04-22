@@ -19,6 +19,7 @@ class SetupCommandHandler:
             timeout_minutes="Timeout duration in minutes (1-40320)",
             alert_enabled="Send alerts to a channel",
             alert_channel="Channel for moderation alerts",
+            report_to_owner_enabled="Submit detected scam images to owner webhook",
         )
         async def setupbot(
             interaction: discord.Interaction,
@@ -27,6 +28,7 @@ class SetupCommandHandler:
             timeout_minutes: app_commands.Range[int, 1, 40320] = 10,
             alert_enabled: bool = False,
             alert_channel: discord.TextChannel | None = None,
+            report_to_owner_enabled: bool = False,
         ) -> None:
             if interaction.guild is None:
                 await interaction.response.send_message("This command must be used in a server.", ephemeral=True)
@@ -52,6 +54,7 @@ class SetupCommandHandler:
                 timeout_minutes=int(timeout_minutes),
                 alert_enabled=alert_enabled,
                 alert_channel_id=(alert_channel.id if alert_channel else None),
+                report_to_owner_enabled=report_to_owner_enabled,
             )
 
             await interaction.response.send_message(self._format_config_message(config, created=True), ephemeral=True)
@@ -67,6 +70,7 @@ class SetupCommandHandler:
             timeout_minutes="Timeout duration in minutes (1-40320)",
             alert_enabled="Enable or disable moderation alerts",
             alert_channel="Alert channel (set only when enabling alerts)",
+            report_to_owner_enabled="Enable sending detected scam reports to owner webhook",
         )
         async def antiscam_settings(
             interaction: discord.Interaction,
@@ -75,6 +79,7 @@ class SetupCommandHandler:
             timeout_minutes: app_commands.Range[int, 1, 40320] | None = None,
             alert_enabled: bool | None = None,
             alert_channel: discord.TextChannel | None = None,
+            report_to_owner_enabled: bool | None = None,
         ) -> None:
             if interaction.guild is None:
                 await interaction.response.send_message("This command must be used in a server.", ephemeral=True)
@@ -109,6 +114,8 @@ class SetupCommandHandler:
                 changes["alert_channel_id"] = alert_channel.id
                 if alert_enabled is None:
                     changes["alert_enabled"] = True
+            if report_to_owner_enabled is not None:
+                changes["report_to_owner_enabled"] = report_to_owner_enabled
 
             if not changes:
                 await interaction.response.send_message(self._format_config_message(current, created=False), ephemeral=True)
@@ -128,5 +135,6 @@ class SetupCommandHandler:
             f"- timeout_enabled: `{config.timeout_enabled}`\n"
             f"- timeout_minutes: `{config.timeout_minutes}`\n"
             f"- alert_enabled: `{config.alert_enabled}`\n"
-            f"- alert_channel: {alert_channel}"
+            f"- alert_channel: {alert_channel}\n"
+            f"- report_to_owner_enabled: `{config.report_to_owner_enabled}`"
         )

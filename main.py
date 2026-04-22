@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 import discord
 from discord.ext import commands
@@ -15,6 +16,10 @@ from bot.handlers.setup_command_handler import SetupCommandHandler
 from bot.services.image_scan_service import ImageScanService
 from bot.storage.guild_config_store import GuildConfigStore
 from bot.storage.scam_rule_repository import ScamRuleRepository
+
+
+def _sanitize_error_message(message: str) -> str:
+    return re.sub(r"mongodb(?:\+srv)?://[^\s\"']+", "mongodb://<redacted>", message, flags=re.IGNORECASE)
 
 
 class AntiScamBot(commands.Bot):
@@ -95,8 +100,12 @@ def configure_logging() -> None:
 
 def main() -> None:
     configure_logging()
-    bot = AntiScamBot()
-    bot.run(bot.settings.discord_token)
+    try:
+        bot = AntiScamBot()
+        bot.run(bot.settings.discord_token)
+    except Exception as exc:
+        logging.error("Startup failure: %s", _sanitize_error_message(str(exc)))
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

@@ -47,6 +47,9 @@ class AntiScamBot(commands.AutoShardedBot):
             tesseract_cmd=self.settings.tesseract_cmd,
             rule_repository=self.rule_repository,
             workers=self.settings.ocr_workers,
+            ocr_concurrency=self.settings.ocr_concurrency,
+            max_image_dimension=self.settings.ocr_max_image_dimension,
+            aggressive_mode=self.settings.ocr_aggressive_mode,
         )
         self._message_handler: MessageCreateEventHandler | None = None
         self._guild_handler: GuildLifecycleEventHandler | None = None

@@ -263,43 +263,48 @@ class MessageModerationHandler:
         return min(score, 10)  # Cap at 10
         
     async def _scan_attachments_with_retry(self, message: discord.Message, attachments: list) -> list:
-        """Scan attachments with retry logic and caching"""
-        results = []
-        
-        for attachment in attachments:
-            # Check cache first
-            cache_key = f"{attachment.id}_{attachment.size}"
-            if cache_key in self._scan_cache:
-                cached_score, cached_reasons, cached_time = self._scan_cache[cache_key]
-                if datetime.utcnow() - cached_time < self._cache_ttl:
-                    results.append(type('ScanResult', (), {
-                        'score': cached_score,
-                        'reasons': cached_reasons
-                    })())
-                    continue
-                    
-            # Scan with retry
-            for attempt in range(3):
-                try:
-                    if attachment.size and attachment.size > 12 * 1024 * 1024:
-                        result = None
-                    else:
-                        content = await attachment.read(use_cached=True)
-                        result = await self._image_scanner.scan_bytes(content)
-                        
-                    # Cache result
-                    if result and hasattr(result, 'score'):
-                        self._update_cache(cache_key, result.score, result.reasons)
-                        results.append(result)
-                    break
-                except (HTTPException, ConnectionError, TimeoutError) as e:
-                    if attempt == 2:
-                        LOGGER.error("Failed to scan %s after 3 attempts: %s", attachment.filename, e)
-                        results.append(None)
-                    else:
-                        await asyncio.sleep(1 * (attempt + 1))
-                        
-        return results
+        """Scan attachments concurrently, with per-attachment caching + retry.
+
+        Attachments are downloaded AND scanned in parallel via asyncio.gather.
+        The OCR service itself also bounds CPU concurrency internally, so
+        spawning many coroutines here is safe even across many guilds.
+        """
+        return await asyncio.gather(
+            *(self._scan_single_attachment(a) for a in attachments),
+            return_exceptions=False,
+        )
+
+    async def _scan_single_attachment(self, attachment: discord.Attachment):
+        """Download + scan one attachment with cache and bounded retries."""
+        cache_key = f"{attachment.id}_{attachment.size}"
+        cached = self._scan_cache.get(cache_key)
+        if cached is not None:
+            score, reasons, ts = cached
+            if datetime.utcnow() - ts < self._cache_ttl:
+                return type("ScanResult", (), {"score": score, "reasons": reasons})()
+
+        if attachment.size and attachment.size > 12 * 1024 * 1024:
+            return None
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(3):
+            try:
+                content = await attachment.read(use_cached=True)
+                result = await self._image_scanner.scan_bytes(content)
+                if result and hasattr(result, "score"):
+                    self._update_cache(cache_key, result.score, result.reasons)
+                return result
+            except (HTTPException, ConnectionError, TimeoutError) as exc:
+                last_exc = exc
+                await asyncio.sleep(0.5 * (attempt + 1))
+            except Exception as exc:
+                LOGGER.warning("Unexpected scan error on %s: %s", attachment.filename, exc)
+                return None
+
+        LOGGER.error(
+            "Failed to scan %s after 3 attempts: %s", attachment.filename, last_exc
+        )
+        return None
         
     def _update_cache(self, key: str, score: int, reasons: list) -> None:
         """Update scan cache with LRU eviction"""

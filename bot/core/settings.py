@@ -11,6 +11,9 @@ class Settings:
     tesseract_cmd: str | None
     scam_threshold: int
     ocr_workers: int | None
+    ocr_concurrency: int | None
+    ocr_max_image_dimension: int
+    ocr_aggressive_mode: bool
     mongodb_uri: str
     mongodb_database: str
     guild_config_collection: str
@@ -45,6 +48,9 @@ def load_settings(config_path: str = "config.ini") -> Settings:
 
     tesseract_cmd = parser.get("ocr", "tesseract_cmd", fallback="").strip() or None
     workers_raw = parser.get("ocr", "workers", fallback="").strip()
+    concurrency_raw = parser.get("ocr", "concurrency", fallback="").strip()
+    max_dim_raw = parser.get("ocr", "max_image_dimension", fallback="").strip()
+    aggressive_raw = parser.get("ocr", "aggressive_mode", fallback="false").strip().lower()
     owner_report_webhook_url = parser.get("integrations", "owner_report_webhook_url", fallback="").strip() or None
 
     return Settings(
@@ -52,6 +58,9 @@ def load_settings(config_path: str = "config.ini") -> Settings:
         tesseract_cmd=tesseract_cmd,
         scam_threshold=max(1, threshold),
         ocr_workers=int(workers_raw) if workers_raw else None,
+        ocr_concurrency=int(concurrency_raw) if concurrency_raw else None,
+        ocr_max_image_dimension=int(max_dim_raw) if max_dim_raw else 1600,
+        ocr_aggressive_mode=aggressive_raw in {"1", "true", "yes", "on"},
         mongodb_uri=mongodb_uri,
         mongodb_database=mongodb_database,
         guild_config_collection=guild_config_collection,

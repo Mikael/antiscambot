@@ -34,7 +34,7 @@ class UserInfractionTracker:
     first_offense: Optional[datetime] = None
     last_offense: Optional[datetime] = None
     total_score: int = 0
-    
+
     def add_infraction(self, score: int) -> None:
         now = datetime.utcnow()
         if self.first_offense is None:
@@ -45,18 +45,18 @@ class UserInfractionTracker:
 
 
 class MessageModerationHandler:
-    # Progressive discipline thresholds
+
     PROGRESSIVE_TIMEOUTS = {
-        1: 5,      # 1st offense: 5 minutes
-        2: 30,     # 2nd offense: 30 minutes
-        3: 120,    # 3rd offense: 2 hours
-        4: 1440,   # 4th offense: 1 day
-        5: 10080,  # 5th offense: 7 days
+        1: 5,
+        2: 30,
+        3: 120,
+        4: 1440,
+        5: 10080,
     }
-    
-    # Cooldown to prevent spam (seconds)
+
+
     USER_ACTION_COOLDOWN = 60
-    
+
     def __init__(
         self,
         *,
@@ -74,24 +74,24 @@ class MessageModerationHandler:
         self._threshold = threshold
         self._owner_report_webhook_url = owner_report_webhook_url
         self._aggressive_mode = aggressive_mode
-        
-        # Cache for recent actions (prevent duplicate processing)
+
+
         self._processed_messages: Set[int] = set()
         self._user_last_action: Dict[int, datetime] = {}
-        
-        # User infraction tracking
+
+
         self._user_infractions: Dict[Tuple[int, int], UserInfractionTracker] = defaultdict(
             lambda: UserInfractionTracker()
         )
-        
-        # Message content cache for expensive operations
+
+
         self._scan_cache: Dict[str, Tuple[int, list, datetime]] = {}
         self._cache_size = cache_size
         self._cache_ttl = timedelta(minutes=10)
-        
-        # Enhanced scam patterns
+
+
         self._scam_indicators = self._build_scam_indicators()
-        
+
     def _build_scam_indicators(self) -> dict:
         """Build comprehensive scam detection patterns"""
         return {
@@ -120,9 +120,9 @@ class MessageModerationHandler:
                 r"(?i)(?:crypto|bitcoin|ethereum|usdt|wallet)",
                 r"(?i)(?:airdrop|presale|ico|token\s+sale)",
                 r"(?i)(?:staking|mining|pool|liquidity)",
-                r"0x[a-fA-F0-9]{40}",  # ETH address
-                r"bc1[a-zA-HJ-NP-Z0-9]{25,39}",  # BTC bech32
-                r"\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b",  # BTC legacy
+                r"0x[a-fA-F0-9]{40}",
+                r"bc1[a-zA-HJ-NP-Z0-9]{25,39}",
+                r"\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b",
             ],
             "social_engineering": [
                 r"(?i)(?:friend\s+sent|someone\s+gifted)",
@@ -130,63 +130,63 @@ class MessageModerationHandler:
                 r"(?i)(?:dm\s+me|message\s+me|contact\s+support)",
             ],
         }
-        
+
     async def handle(self, message: discord.Message) -> ModerateResult:
         """Main entry point with improved detection and progressive discipline"""
-        
-        # Early checks
+
+
         if skip_result := await self._early_checks(message):
             return skip_result
-            
+
         guild_config = await self._config_store.get(message.guild.id)
         if not guild_config.is_guild_setup:
             return ModerateResult(False, "guild_not_setup")
-            
-        # Deduplicate processing
+
+
         if message.id in self._processed_messages:
             return ModerateResult(False, "already_processed")
         self._processed_messages.add(message.id)
-        
-        # Clean old cache entries periodically
+
+
         if len(self._processed_messages) > 1000:
             self._processed_messages.clear()
-            
-        # Extract and validate attachments
+
+
         image_attachments = [a for a in message.attachments if self._is_image(a)]
         if not image_attachments:
             return ModerateResult(False, "no_image_attachments" if message.attachments else "no_attachment")
-            
-        # Check OCR availability
+
+
         if not self._image_scanner.tesseract_available:
             LOGGER.warning("OCR unavailable for message %s", message.id)
             return ModerateResult(False, "ocr_unavailable")
-            
-        # Scan attachments with improved error handling
+
+
         scans = await self._scan_attachments_with_retry(message, image_attachments)
-        
-        # Check for scam in any attachment
+
+
         for scan_result in scans:
             if scan_result is None:
                 continue
-                
-            # Enhanced confidence calculation
+
+
             is_scam, confidence_score = self._calculate_confidence(scan_result)
-            
+
             if not is_scam:
                 LOGGER.debug(
                     "Message %s not flagged: score=%s reasons=%s",
                     message.id, scan_result.score, scan_result.reasons
                 )
                 continue
-                
-            # Apply progressive discipline
+
+
             return await self._apply_moderation_actions(
                 message, scan_result, guild_config, confidence_score
             )
-            
+
         LOGGER.debug("Message %s clean after scanning %d images", message.id, len(image_attachments))
         return ModerateResult(False, "clean")
-        
+
     async def _early_checks(self, message: discord.Message) -> Optional[ModerateResult]:
         """Perform early checks to filter out messages"""
         if message.author.bot:
@@ -196,37 +196,37 @@ class MessageModerationHandler:
         if message.author.id == self._bot_user_id:
             return ModerateResult(False, "ignored_self")
         return None
-        
+
     def _calculate_confidence(self, scan_result) -> Tuple[bool, int]:
         """Enhanced confidence calculation with weighted scoring"""
-        
+
         has_blocked_domain = any(r.startswith("blocked_domain") for r in scan_result.reasons)
         blocked_words_hits = self._extract_reason_hits(scan_result.reasons, "blocked_words")
         core_phrase_hits = self._extract_reason_hits(scan_result.reasons, "core_phrases")
         core_token_hits = self._extract_reason_hits(scan_result.reasons, "core_tokens")
         has_wallet = any(r == "wallet_address_like" for r in scan_result.reasons)
-        
-        # Calculate weighted score
+
+
         weighted_score = scan_result.score
-        
-        # Boost for blocked domains
+
+
         if has_blocked_domain:
             weighted_score += 5
-            
-        # Boost for multiple core phrases
+
+
         weighted_score += core_phrase_hits * 2
-        
-        # Boost for wallet addresses with other indicators
+
+
         if has_wallet and core_token_hits >= 2:
             weighted_score += 3
-            
-        # Aggressive mode lowers threshold
+
+
         effective_threshold = self._threshold - 2 if self._aggressive_mode else self._threshold
-        
-        # Multiple confidence conditions
+
+
         is_confident = weighted_score >= effective_threshold
-        
-        # High-confidence conditions regardless of threshold
+
+
         if has_blocked_domain and weighted_score >= 3:
             is_confident = True
         elif has_wallet and core_phrase_hits >= 1 and weighted_score >= 4:
@@ -237,31 +237,31 @@ class MessageModerationHandler:
             is_confident = True
         elif len(scan_result.reasons) >= 4:
             is_confident = True
-            
-        # Check scam patterns from OCR text
+
+
         if hasattr(scan_result, 'extracted_text') and scan_result.extracted_text:
             pattern_score = self._check_scam_patterns(scan_result.extracted_text)
             if pattern_score >= 3:
                 is_confident = True
                 weighted_score += pattern_score
-                
+
         return is_confident, weighted_score
-        
+
     def _check_scam_patterns(self, text: str) -> int:
         """Check text against predefined scam patterns"""
         score = 0
         text_lower = text.lower()
-        
+
         for category, patterns in self._scam_indicators.items():
             category_score = 0
             for pattern in patterns:
                 if re.search(pattern, text_lower):
                     category_score += 1
-            if category_score >= 2:  # Multiple patterns in same category
+            if category_score >= 2:
                 score += category_score
-                
-        return min(score, 10)  # Cap at 10
-        
+
+        return min(score, 10)
+
     async def _scan_attachments_with_retry(self, message: discord.Message, attachments: list) -> list:
         """Scan attachments concurrently, with per-attachment caching + retry.
 
@@ -305,71 +305,71 @@ class MessageModerationHandler:
             "Failed to scan %s after 3 attempts: %s", attachment.filename, last_exc
         )
         return None
-        
+
     def _update_cache(self, key: str, score: int, reasons: list) -> None:
         """Update scan cache with LRU eviction"""
         if len(self._scan_cache) >= self._cache_size:
-            # Remove oldest entries
+
             to_remove = len(self._scan_cache) - self._cache_size + 100
             for _ in range(to_remove):
                 if self._scan_cache:
                     self._scan_cache.pop(next(iter(self._scan_cache)))
         self._scan_cache[key] = (score, reasons, datetime.utcnow())
-        
+
     async def _apply_moderation_actions(
-        self, 
-        message: discord.Message, 
-        scan_result, 
-        guild_config, 
+        self,
+        message: discord.Message,
+        scan_result,
+        guild_config,
         score: int
     ) -> ModerateResult:
         """Apply moderation with progressive discipline"""
-        
+
         user_key = (message.guild.id, message.author.id)
-        # Track infraction
+
         tracker = self._user_infractions[user_key]
         tracker.add_infraction(score)
-        
-        # Determine timeout duration based on infraction count
+
+
         timeout_minutes = self.PROGRESSIVE_TIMEOUTS.get(
             min(tracker.infraction_count, max(self.PROGRESSIVE_TIMEOUTS.keys())),
-            60  # default
+            60
         )
-        
-        # Log the detection
+
+
         LOGGER.warning(
             "SCAM DETECTED: User=%s (infraction #%d), Score=%d, Reasons=%s",
             message.author.id, tracker.infraction_count, score, scan_result.reasons
         )
-        
-        # Apply actions
+
+
         deleted = False
         timeout_applied = False
-        
-        # Always delete scam messages if auto_delete enabled
+
+
         if guild_config.auto_delete:
             deleted = await self._apply_delete(message, True)
-            
-        # Apply timeout based on progressive discipline
+
+
         if guild_config.timeout_enabled:
             timeout_applied = await self._apply_timeout(
                 message, True, timeout_minutes
             )
-            
-        # Send alerts
+
+
         await self._notify_channel(message, scan_result, guild_config, deleted, timeout_applied, tracker.infraction_count)
         await self._report_to_owner_webhook(message, scan_result, guild_config, deleted, timeout_applied)
-        
-        # DM user with warning (rate limited)
+
+
         if guild_config.dm_user_warning_enabled:
             await self._dm_user_warning(message, tracker.infraction_count)
-            
-        # Update last action time
+
+
         self._user_last_action[message.author.id] = datetime.utcnow()
-        
+
         action_desc = f"deleted={deleted}, timeout={timeout_minutes}m" if timeout_applied else f"deleted={deleted}"
         return ModerateResult(deleted, f"scam_score_{score}", score=score, action_taken=action_desc)
-        
+
     @staticmethod
     def _extract_reason_hits(reasons: list[str], key: str) -> int:
         """Extract hit counts from reason strings with improved parsing"""
@@ -379,7 +379,7 @@ class MessageModerationHandler:
             if not reason.startswith(prefix):
                 continue
             try:
-                # Handle nested parentheses
+
                 start = len(prefix)
                 paren_count = 1
                 end = start
@@ -395,26 +395,26 @@ class MessageModerationHandler:
             if value > max_hits:
                 max_hits = value
         return max_hits
-        
+
     async def _scan_attachment(self, attachment: discord.Attachment):
         """Legacy method - kept for compatibility"""
         if attachment.size and attachment.size > 12 * 1024 * 1024:
             return None
         content = await attachment.read(use_cached=True)
         return await self._image_scanner.scan_bytes(content)
-        
+
     def _is_image(self, attachment: discord.Attachment) -> bool:
         """Check if attachment is an image with better MIME type handling"""
         if attachment.content_type:
             if attachment.content_type.startswith("image/"):
                 return True
-            # Handle common mislabeled images
+
             if attachment.content_type in {"application/octet-stream", "binary/octet-stream"}:
                 filename = attachment.filename.lower()
                 return filename.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"))
         filename = attachment.filename.lower()
         return filename.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"))
-        
+
     async def _apply_delete(self, message: discord.Message, enabled: bool) -> bool:
         """Delete message with better error handling"""
         if not enabled:
@@ -432,7 +432,7 @@ class MessageModerationHandler:
         except HTTPException as e:
             LOGGER.error("Failed to delete message %s: %s", message.id, e)
             return False
-            
+
     async def _apply_timeout(self, message: discord.Message, enabled: bool, minutes: int) -> bool:
         """Apply timeout with progressive duration"""
         if not enabled:
@@ -440,12 +440,12 @@ class MessageModerationHandler:
         if not isinstance(message.author, discord.Member):
             return False
         try:
-            # Check if member has admin permissions (don't timeout admins)
+
             if message.author.guild_permissions.administrator:
                 LOGGER.info("Skipping timeout for admin %s", message.author.id)
                 return False
-                
-            duration = timedelta(minutes=max(1, min(minutes, 10080)))  # Max 7 days
+
+            duration = timedelta(minutes=max(1, min(minutes, 10080)))
             await message.author.timeout(duration, reason="Crypto scam image detected")
             LOGGER.info("Timed out user %s for %d minutes", message.author.id, minutes)
             return True
@@ -455,20 +455,20 @@ class MessageModerationHandler:
         except HTTPException as e:
             LOGGER.error("Failed to timeout user %s: %s", message.author.id, e)
             return False
-            
+
     async def _notify_channel(
-        self, 
-        message: discord.Message, 
-        result, 
-        guild_config, 
-        deleted: bool, 
+        self,
+        message: discord.Message,
+        result,
+        guild_config,
+        deleted: bool,
         timeout_applied: bool,
         infraction_count: int
     ) -> None:
         """Enhanced notification with more details"""
         if not guild_config.alert_enabled:
             return
-            
+
         channel = None
         if guild_config.alert_channel_id:
             channel = message.guild.get_channel(guild_config.alert_channel_id)
@@ -477,60 +477,60 @@ class MessageModerationHandler:
                     channel = await message.guild.fetch_channel(guild_config.alert_channel_id)
                 except (Forbidden, HTTPException, NotFound):
                     channel = None
-                    
+
         if channel is None:
             return
-            
-        # Color based on severity
+
+
         if result.score >= 8:
             color = discord.Color.dark_red()
         elif result.score >= 5:
             color = discord.Color.red()
         else:
             color = discord.Color.orange()
-            
+
         embed = discord.Embed(
             title="🚨 Scam Image Detected",
             description=f"**{message.author.mention}** posted a flagged image.",
             color=color,
             timestamp=datetime.utcnow()
         )
-        
-        # Add fields
+
+
         embed.add_field(name="🎯 Confidence Score", value=f"`{result.score}/10`", inline=True)
         embed.add_field(name="⚠️ Infraction #", value=f"`{infraction_count}`", inline=True)
         embed.add_field(name="🗑️ Message Deleted", value="✅ Yes" if deleted else "❌ No", inline=True)
         embed.add_field(name="⏰ User Timed Out", value=f"✅ {timeout_applied}" if timeout_applied else "❌ No", inline=True)
         embed.add_field(name="📢 Channel", value=message.channel.mention, inline=True)
         embed.add_field(name="👤 User", value=f"{message.author} (`{message.author.id}`)", inline=False)
-        
-        # Add detection reasons
+
+
         if result.reasons:
-            reasons_text = ", ".join(result.reasons[:5])  # Limit to 5 reasons
+            reasons_text = ", ".join(result.reasons[:5])
             if len(result.reasons) > 5:
                 reasons_text += f" (+{len(result.reasons)-5} more)"
             embed.add_field(name="🔍 Detection Reasons", value=f"```{reasons_text}```", inline=False)
-            
-        # Add image preview
+
+
         image_urls = [a.url for a in message.attachments if self._is_image(a)]
         if image_urls:
             embed.set_image(url=image_urls[0])
             embed.add_field(name="📸 Image URL", value=f"[Click to view]({image_urls[0]})", inline=False)
-            
+
         embed.set_footer(text=f"Message ID: {message.id} • User ID: {message.author.id}")
-        
+
         try:
             await channel.send(embed=embed)
         except Forbidden:
             LOGGER.warning("Cannot send alert to channel %s", channel.id)
             return
-            
+
     async def _report_to_owner_webhook(
-        self, 
-        message: discord.Message, 
-        result, 
-        guild_config, 
-        deleted: bool, 
+        self,
+        message: discord.Message,
+        result,
+        guild_config,
+        deleted: bool,
         timeout_applied: bool
     ) -> None:
         """Report to owner webhook with full details"""
@@ -538,17 +538,17 @@ class MessageModerationHandler:
             return
         if not self._owner_report_webhook_url:
             return
-            
+
         reasons = ", ".join(result.reasons) if result.reasons else "none"
         attachments = "\n".join(a.url for a in message.attachments if self._is_image(a))
-        
+
         embed = discord.Embed(
             title="📊 Scam Report Submission",
             color=discord.Color.orange(),
             description="A guild has reported a detected scam image.",
             timestamp=datetime.utcnow()
         )
-        
+
         embed.add_field(name="🏢 Guild", value=f"{message.guild.name} (`{message.guild.id}`)", inline=False)
         embed.add_field(name="👤 User", value=f"{message.author} (`{message.author.id}`)", inline=False)
         embed.add_field(name="💬 Channel", value=f"{message.channel.mention} (`{message.channel.id}`)", inline=False)
@@ -556,14 +556,14 @@ class MessageModerationHandler:
         embed.add_field(name="🗑️ Deleted", value=str(deleted), inline=True)
         embed.add_field(name="⏰ Timeout", value=str(timeout_applied), inline=True)
         embed.add_field(name="🔍 Reasons", value=f"```{reasons[:1024]}```", inline=False)
-        
+
         if attachments:
             embed.add_field(name="📸 Image URLs", value=attachments[:1024], inline=False)
-            
-        # Add message content if available
+
+
         if message.content:
             embed.add_field(name="💬 Message Content", value=message.content[:1024], inline=False)
-            
+
         try:
             import aiohttp
             async with aiohttp.ClientSession() as session:
@@ -571,13 +571,13 @@ class MessageModerationHandler:
                 await webhook.send(embed=embed, username="AntiScam Reporter", avatar_url=None)
         except Exception as e:
             LOGGER.error("Failed to send owner report: %s", e)
-            
+
     async def _dm_user_warning(self, message: discord.Message, infraction_count: int) -> None:
         """Send DM warning with progressive messaging"""
         if not isinstance(message.author, discord.Member):
             return
-            
-        # Different messages based on infraction count
+
+
         if infraction_count == 1:
             text = (
                 "⚠️ **Warning**: Your recent image was flagged as a possible crypto scam. "
@@ -605,7 +605,7 @@ class MessageModerationHandler:
                 "2. Check for unauthorized sessions in Discord settings\n"
                 "3. Contact server staff if your account was compromised"
             )
-            
+
         try:
             await message.author.send(text)
             LOGGER.debug("Sent warning DM to user %s (infraction #%d)", message.author.id, infraction_count)

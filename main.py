@@ -13,6 +13,7 @@ from bot.core.settings import load_settings
 from bot.events.guild_lifecycle import GuildLifecycleEventHandler
 from bot.events.message_create import MessageCreateEventHandler
 from bot.handlers.help_command_handler import HelpCommandHandler
+from bot.handlers.info_command_handler import InfoCommandHandler
 from bot.handlers.message_moderation_handler import MessageModerationHandler
 from bot.handlers.setup_command_handler import SetupCommandHandler
 from bot.services.image_scan_service import ImageScanService
@@ -74,9 +75,12 @@ class AntiScamBot(commands.AutoShardedBot):
 
         setup_handler = SetupCommandHandler(self.config_store)
         help_handler = HelpCommandHandler()
+        info_handler = InfoCommandHandler()
         self.tree.add_command(setup_handler.build_setup())
         self.tree.add_command(setup_handler.build_settings())
         self.tree.add_command(help_handler.build())
+        self.tree.add_command(info_handler.build_invite())
+        self.tree.add_command(info_handler.build_about())
         await self.tree.sync()
 
     async def on_ready(self) -> None:

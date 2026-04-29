@@ -6,7 +6,7 @@ from typing import Optional
 
 try:
     from dotenv import load_dotenv
-    # Load .env file if present (local development only, Railway does not need this)
+
     load_dotenv()
 except ImportError:
     pass
@@ -14,16 +14,16 @@ except ImportError:
 
 @dataclass
 class BotConfig:
-    # Bot Core
+
     discord_token: str
     command_prefix: str = "!"
     debug_mode: bool = False
-    
-    # Database
+
+
     mongodb_uri: str = "mongodb://localhost:27017"
     database_name: str = "antiscambot"
-    
-    # OCR / Image Scanning
+
+
     tesseract_cmd: Optional[str] = None
     ocr_workers: int = 4
     use_process_pool: bool = True
@@ -31,14 +31,14 @@ class BotConfig:
     cache_max_items: int = 2000
     enable_ml_fallback: bool = True
     aggressive_ocr_mode: bool = False
-    
-    # Logging
+
+
     log_level: str = "INFO"
-    
-    # Railway specific
+
+
     port: int = 8080
     public_url: Optional[str] = None
-    
+
     @classmethod
     def from_env(cls) -> BotConfig:
         """Load configuration from environment variables (Railway compatible)"""
@@ -59,15 +59,15 @@ class BotConfig:
             port=int(os.environ.get("PORT", "8080")),
             public_url=os.environ.get("RAILWAY_PUBLIC_DOMAIN") or os.environ.get("PUBLIC_URL"),
         )
-    
+
     def validate(self) -> list[str]:
         """Validate configuration and return list of errors"""
         errors = []
-        
+
         if not self.discord_token:
             errors.append("DISCORD_TOKEN environment variable is required")
-        
+
         if self.ocr_workers < 1:
             errors.append("OCR_WORKERS must be at least 1")
-            
+
         return errors

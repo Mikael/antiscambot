@@ -25,7 +25,6 @@ from bot.storage.scam_rule_repository import ScamRuleRepository
 
 LOGGER = logging.getLogger(__name__)
 
-# --- Patterns --------------------------------------------------------------
 
 DOMAIN_RE = re.compile(
     r"\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,})\b",
@@ -89,14 +88,12 @@ URGENCY_PATTERNS: Tuple[Tuple[re.Pattern, int], ...] = (
     (re.compile(r"(?:final\s+(?:day|chance|warning)|time\s+running\s+out)", re.IGNORECASE), 2),
 )
 
-# Hard-confidence score that lets us short-circuit extra OCR variants.
-EARLY_EXIT_SCORE = 8
-# Max dimension before we downscale. Tesseract throughput drops sharply above ~1600px.
-DEFAULT_MAX_DIM = 1600
-# Lower bound: anything below this is useless for OCR.
-MIN_DIM = 50
 
-# --- Data ------------------------------------------------------------------
+EARLY_EXIT_SCORE = 8
+
+DEFAULT_MAX_DIM = 1600
+
+MIN_DIM = 50
 
 
 @dataclass(slots=True)
@@ -112,9 +109,6 @@ class EnhancedScanResult(ScanResult):
     matched_patterns: List[str] = field(default_factory=list)
     processing_time_ms: float = 0.0
     ocr_methods_used: List[str] = field(default_factory=list)
-
-
-# --- Service ---------------------------------------------------------------
 
 
 class ImageScanService:
@@ -147,15 +141,14 @@ class ImageScanService:
         self._aggressive_mode = aggressive_mode
         self._max_dim = max(400, int(max_image_dimension))
 
-        # Tesseract + numpy/PIL release the GIL, so threads give real
-        # parallelism. Pool sized to ~2x CPU to overlap with attachment I/O.
+
         cpu = os.cpu_count() or 4
         pool_size = workers if workers and workers > 0 else max(4, cpu * 2)
         self._pool = ThreadPoolExecutor(
             max_workers=pool_size, thread_name_prefix="ocr"
         )
 
-        # Global cap so we don't oversubscribe tesseract itself.
+
         sem_size = ocr_concurrency if ocr_concurrency and ocr_concurrency > 0 else cpu
         self._ocr_semaphore = asyncio.Semaphore(sem_size)
 
@@ -163,7 +156,7 @@ class ImageScanService:
         self._cache_ttl_seconds = cache_ttl_seconds
         self._cache_max_items = cache_max_items
 
-        # Near-duplicate (pHash -> verdict) cache for cross-server reuse.
+
         self._phash_cache: "OrderedDict[int, tuple[float, ScanResult]]" = OrderedDict()
 
         self._stats: Dict[str, Any] = {
@@ -183,7 +176,6 @@ class ImageScanService:
                 for rule in self._rule_repository.high_risk_rules
             ]
 
-    # ---- Public API ------------------------------------------------------
 
     @property
     def tesseract_available(self) -> bool:
@@ -250,7 +242,6 @@ class ImageScanService:
             "ttl_seconds": self._cache_ttl_seconds,
         }
 
-    # ---- Sync scanning pipeline -----------------------------------------
 
     def _scan_bytes_sync(self, payload: bytes) -> ScanResult:
         try:
@@ -282,7 +273,7 @@ class ImageScanService:
             self._stats["phash_hits"] += 1
             return hit
 
-        # --- Fast OCR pass ------------------------------------------------
+
         results: List[OCRResult] = []
 
         fast_img = self._preprocess(img, "fast")
@@ -296,7 +287,7 @@ class ImageScanService:
             self._phash_put(phash, verdict)
             return verdict
 
-        # --- Deeper variants, executed in PARALLEL via the shared pool ---
+
         variant_jobs = [
             ("contrast_psm11", self._preprocess(img, "high_contrast"), 11, 3),
             ("upscaled_psm4", self._preprocess(img, "upscaled"), 4, 1),
@@ -332,7 +323,6 @@ class ImageScanService:
         self._phash_put(phash, verdict)
         return verdict
 
-    # ---- Image prep -----------------------------------------------------
 
     def _prepare(self, img: Image.Image) -> Image.Image:
         """Normalize + downscale. Runs once per image."""
@@ -407,7 +397,6 @@ class ImageScanService:
 
         return ImageOps.grayscale(img)
 
-    # ---- OCR ------------------------------------------------------------
 
     def _run_tesseract(self, img: Image.Image, psm: int, oem: int) -> str:
         try:
@@ -418,7 +407,6 @@ class ImageScanService:
             return ""
         return text.strip() if text else ""
 
-    # ---- Analysis -------------------------------------------------------
 
     def _analyze(self, ocr_results: List[OCRResult]) -> EnhancedScanResult:
         merged = self._merge(ocr_results)
@@ -526,7 +514,6 @@ class ImageScanService:
             ocr_methods_used=[r.method for r in ocr_results],
         )
 
-    # ---- Text helpers ---------------------------------------------------
 
     @staticmethod
     def _snippet(text: str, max_len: int = 300) -> str:
@@ -559,7 +546,6 @@ class ImageScanService:
     def _normalize_domain(domain: str) -> str:
         return domain.lower().strip(". ")
 
-    # ---- pHash (fast visual fingerprint) --------------------------------
 
     @staticmethod
     def _phash(img: Image.Image) -> int:
@@ -597,7 +583,6 @@ class ImageScanService:
         while len(self._phash_cache) > self._cache_max_items:
             self._phash_cache.popitem(last=False)
 
-    # ---- Exact-hash cache ------------------------------------------------
 
     def _cache_get(self, key: str) -> Optional[ScanResult]:
         item = self._cache.get(key)
@@ -616,7 +601,6 @@ class ImageScanService:
         while len(self._cache) > self._cache_max_items:
             self._cache.popitem(last=False)
 
-    # ---- Tesseract discovery --------------------------------------------
 
     def _find_tesseract(self, custom_path: Optional[str]) -> Optional[str]:
         candidates: List[Path] = []

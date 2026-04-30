@@ -18,6 +18,8 @@ from bot.storage.guild_config_store import GuildConfigStore
 
 LOGGER = logging.getLogger(__name__)
 
+SUPPORT_SERVER_URL = "https://discord.gg/h4XcSYWXSX"
+
 
 @dataclass(slots=True)
 class ModerateResult:
@@ -573,8 +575,24 @@ class MessageModerationHandler:
 
         embed.set_footer(text=f"Message ID: {message.id} • User ID: {message.author.id}")
 
+        feedback_embed = discord.Embed(
+            title="🤖 Was this detection inaccurate?",
+            description=(
+                "If you believe this detection was a false positive, missed something, "
+                "or you have feedback about the bot, please join our support server "
+                "so we can investigate and improve."
+            ),
+            color=discord.Color.blurple()
+        )
+        feedback_embed.add_field(
+            name="💬 Support Server",
+            value=f"[Click here to join]({SUPPORT_SERVER_URL})",
+            inline=False
+        )
+        feedback_embed.set_footer(text="Your feedback helps us make the bot more accurate.")
+
         try:
-            await channel.send(embed=embed)
+            await channel.send(embeds=[embed, feedback_embed])
         except Forbidden:
             LOGGER.warning("Cannot send alert to channel %s", channel.id)
             return

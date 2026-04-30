@@ -96,9 +96,13 @@ class MessageModerationHandler:
         """Build comprehensive scam detection patterns"""
         return {
             "urgent_actions": [
-                r"(?i)(?:limited|only|expires?|ending\s+soon)",
-                r"(?i)(?:act\s+now|don['’]t\s+miss|claim\s+now)",
-                r"(?i)(?:last\s+chance|final\s+day|hurry)",
+                r"(?i)limited\s+time",
+                r"(?i)only\s+\d+\s+(?:left|remaining|spots?)",
+                r"(?i)last\s+chance",
+                r"(?i)expires?\s+(?:soon|today|in)",
+                r"(?i)ending\s+soon",
+                r"(?i)(?:act\s+now|don['’]t\s+miss|claim\s+now|hurry\s+(?:up|now))",
+                r"(?i)final\s+(?:day|chance|warning)|time\s+running\s+out",
             ],
             "financial_rewards": [
                 r"\$\d+(?:,\d+)*(?:\.\d+)?",
@@ -235,7 +239,9 @@ class MessageModerationHandler:
             is_confident = True
         elif blocked_words_hits >= 3:
             is_confident = True
-        elif len(scan_result.reasons) >= 4:
+        elif len(scan_result.reasons) >= 4 and (
+            has_blocked_domain or has_wallet or core_phrase_hits >= 1
+        ):
             is_confident = True
 
 

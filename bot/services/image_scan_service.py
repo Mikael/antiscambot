@@ -83,9 +83,13 @@ FINANCIAL_PATTERNS: Tuple[Tuple[re.Pattern, int], ...] = (
 )
 
 URGENCY_PATTERNS: Tuple[Tuple[re.Pattern, int], ...] = (
-    (re.compile(r"(?:limited|only|expires?|ending\s+soon|last\s+chance)", re.IGNORECASE), 2),
-    (re.compile(r"(?:act\s+now|don[\'\u2019]t\s+miss|claim\s+now|hurry)", re.IGNORECASE), 2),
-    (re.compile(r"(?:final\s+(?:day|chance|warning)|time\s+running\s+out)", re.IGNORECASE), 2),
+    (re.compile(r"limited\s+time", re.IGNORECASE), 2),
+    (re.compile(r"only\s+\d+\s+(?:left|remaining|spots?)", re.IGNORECASE), 2),
+    (re.compile(r"last\s+chance", re.IGNORECASE), 2),
+    (re.compile(r"expires?\s+(?:soon|today|in)", re.IGNORECASE), 2),
+    (re.compile(r"ending\s+soon", re.IGNORECASE), 2),
+    (re.compile(r"(?:act\s+now|don[\'\u2019]t\s+miss|claim\s+now|hurry\s+(?:up|now))", re.IGNORECASE), 2),
+    (re.compile(r"final\s+(?:day|chance|warning)|time\s+running\s+out", re.IGNORECASE), 2),
 )
 
 
@@ -485,7 +489,7 @@ class ImageScanService:
             reasons.append(f"financial_indicators:{fin}")
 
         urg = sum(w for pat, w in URGENCY_PATTERNS if pat.search(lowered))
-        if urg >= 2:
+        if urg >= 4:
             score += min(5, urg)
             reasons.append(f"urgency_patterns:{urg}")
             matched.append("urgency_indicators")

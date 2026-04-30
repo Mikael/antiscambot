@@ -56,15 +56,21 @@ LEETSPEAK_MAP = str.maketrans(
     }
 )
 
+# NOTE: entries here MUST be multi-word phrases. Bare English words like
+# "reward", "prize", "winner", "celebration", "congratulation(s)" are far
+# too generic -- they appear in Patreon tier descriptions, game event
+# screenshots, birthday messages, etc. Such words belong in
+# CORE_SCAM_TOKENS below, where a 2+ token threshold protects against
+# false positives on benign single-word occurrences.
 CORE_SCAM_PHRASES: Tuple[str, ...] = (
     "withdrawal success", "receive usdt", "select crypto to withdraw",
     "crypto to withdraw", "claim your reward", "activate code",
     "reward received", "wallet connect", "crypto bonus", "bonus code",
-    "congratulations", "promo code", "limited time", "million users",
+    "promo code", "limited time", "million users",
     "celebration promotion", "you are the lucky", "prize credited",
-    "withdraw your funds", "account balance", "free bonus",
-    "users celebration", "congratulation", "reward", "prize", "winner",
-    "celebration",
+    "withdraw your funds", "free bonus",
+    "users celebration", "claim your prize", "you have won",
+    "congratulations you", "reward is waiting",
 )
 
 CORE_SCAM_TOKENS: frozenset = frozenset(
@@ -459,9 +465,19 @@ class ImageScanService:
 
         phrase_hits = [p for p in CORE_SCAM_PHRASES if self._contains_phrase(lowered, normalized, p)]
         if phrase_hits:
-            score += min(8, len(phrase_hits) * 2)
-            reasons.append(f"core_phrases({len(phrase_hits)}):{','.join(phrase_hits[:3])}")
-            matched.extend(phrase_hits[:3])
+            # A single core-phrase hit used to be enough to heavily boost
+            # the score (min 2, +2 more via core_phrase_hits*2 in the
+            # handler -> 4) which cleared aggressive thresholds on its
+            # own. Require 2+ distinct phrase hits for the full boost,
+            # and give only a small weight for a solitary hit so benign
+            # screenshots don't auto-flag.
+            if len(phrase_hits) >= 2:
+                score += min(8, len(phrase_hits) * 2)
+                reasons.append(f"core_phrases({len(phrase_hits)}):{','.join(phrase_hits[:3])}")
+                matched.extend(phrase_hits[:3])
+            else:
+                score += 1
+                reasons.append(f"core_phrase_single:{phrase_hits[0]}")
 
         tokens = set(normalized.split())
         token_hits = sorted(tokens & CORE_SCAM_TOKENS)

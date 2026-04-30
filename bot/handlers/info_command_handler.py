@@ -12,6 +12,8 @@ INVITE_URL = (
     "&scope=bot"
 )
 
+SUPPORT_SERVER_URL = "https://discord.gg/h4XcSYWXSX"
+
 
 class InfoCommandHandler:
     def build_invite(self) -> app_commands.Command:
@@ -19,7 +21,12 @@ class InfoCommandHandler:
         async def invite(interaction: discord.Interaction) -> None:
             embed = discord.Embed(
                 title="Invite AntiScamBot",
-                description=f"Click the link below to add AntiScamBot to your server.\n\n[Invite AntiScamBot]({INVITE_URL})",
+                description=(
+                    f"Click the link below to add AntiScamBot to your server.\n\n"
+                    f"[Invite AntiScamBot]({INVITE_URL})\n\n"
+                    f"Need help or have questions? Join the "
+                    f"[support server]({SUPPORT_SERVER_URL})."
+                ),
                 color=discord.Color.blurple(),
             )
             embed.set_footer(text="Thanks for helping fight scams on Discord.")
@@ -42,7 +49,8 @@ class InfoCommandHandler:
                 "- Live-updating scam rule set\n"
                 "- Auto-delete, progressive timeouts, moderator alerts\n"
                 "- Per-guild configuration via `/setupbot` and `/antiscam-settings`\n\n"
-                f"[Invite AntiScamBot]({INVITE_URL})"
+                f"[Invite AntiScamBot]({INVITE_URL})\n"
+                f"[Support Server]({SUPPORT_SERVER_URL}) - join if you need help or have questions."
             )
             embed = discord.Embed(
                 title="About AntiScamBot",

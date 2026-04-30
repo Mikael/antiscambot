@@ -93,45 +93,69 @@ class MessageModerationHandler:
         self._scam_indicators = self._build_scam_indicators()
 
     def _build_scam_indicators(self) -> dict:
-        """Build comprehensive scam detection patterns"""
+        """Build comprehensive scam detection patterns.
+
+        IMPORTANT: every pattern here must be specific enough that it
+        does not match ordinary English or unrelated UI text. Bare words
+        like "reward", "bonus", "limited", "support" show up constantly
+        on legitimate screenshots (Patreon tiers, receipts, game UI),
+        so they are always paired with scam-specific context.
+        """
         return {
             "urgent_actions": [
-                r"(?i)limited\s+time",
-                r"(?i)only\s+\d+\s+(?:left|remaining|spots?)",
-                r"(?i)last\s+chance",
-                r"(?i)expires?\s+(?:soon|today|in)",
-                r"(?i)ending\s+soon",
-                r"(?i)(?:act\s+now|don['’]t\s+miss|claim\s+now|hurry\s+(?:up|now))",
-                r"(?i)final\s+(?:day|chance|warning)|time\s+running\s+out",
+                r"(?i)\blimited\s+time\b",
+                r"(?i)\bonly\s+\d+\s+(?:left|remaining|spots?|seats?|slots?)\b",
+                r"(?i)\blast\s+chance\b",
+                r"(?i)\bexpires?\s+(?:soon|today|in\s+\d)\b",
+                r"(?i)\bending\s+soon\b",
+                r"(?i)\bact\s+now\b",
+                r"(?i)\bdon['\u2019]t\s+miss\s+out\b",
+                r"(?i)\bclaim\s+(?:now|your\s+(?:reward|prize|bonus))\b",
+                r"(?i)\bhurry\s+up\b",
+                r"(?i)\bfinal\s+(?:day|chance|warning|hours?)\b",
+                r"(?i)\btime\s+(?:is\s+)?running\s+out\b",
             ],
             "financial_rewards": [
-                r"\$\d+(?:,\d+)*(?:\.\d+)?",
-                r"(?i)(?:reward|prize|bonus|gift|giveaway)",
-                r"(?i)(?:withdraw|cash\s+out|transfer)",
-                r"(?i)(?:credited|deposited|added\s+to\s+balance)",
+                # Bare "$32" is not a scam signal on its own; require it
+                # to be paired with reward/free/claim context.
+                r"(?i)\b(?:claim|get|receive|win|earn)\s+(?:your\s+)?"
+                r"(?:free\s+)?(?:reward|prize|bonus|gift|giveaway)\b",
+                r"(?i)\bfree\s+(?:reward|prize|bonus|gift|giveaway|cash|money)\b",
+                r"(?i)\bcash\s+out\b",
+                r"(?i)\bwithdraw\s+(?:your\s+)?(?:funds?|money|balance|usdt|crypto)\b",
+                r"(?i)\bcredited\s+to\s+your\s+(?:account|balance|wallet)\b",
+                r"(?i)\bdeposited\s+to\s+your\s+(?:account|balance|wallet)\b",
+                r"(?i)\badded\s+to\s+(?:your\s+)?balance\b",
             ],
             "authority_spoofing": [
-                r"(?i)(?:discord\s+(?:staff|team|admin|moderator))",
-                r"(?i)(?:official|verified|trusted|partner)",
-                r"(?i)(?:support|help\s+desk|customer\s+service)",
+                r"(?i)\bdiscord\s+(?:staff|team|admin|moderator|support)\b",
+                r"(?i)\b(?:official|verified)\s+(?:discord|steam|epic|riot)\b",
+                r"(?i)\b(?:steam|riot|epic)\s+support\b",
             ],
             "compromise_signals": [
-                r"(?i)(?:account\s+(?:compromised|hacked|stolen))",
-                r"(?i)(?:reset\s+password|verify\s+identity|secure\s+account)",
-                r"(?i)(?:2fa|two[- ]factor|authentication)",
+                r"(?i)\baccount\s+(?:has\s+been\s+)?(?:compromised|hacked|stolen|suspended)\b",
+                r"(?i)\bverify\s+(?:your\s+)?(?:identity|account|login)\b",
+                r"(?i)\bsecure\s+your\s+account\b",
+                r"(?i)\bunusual\s+(?:login|activity|sign[- ]in)\b",
             ],
             "crypto_scam": [
-                r"(?i)(?:crypto|bitcoin|ethereum|usdt|wallet)",
-                r"(?i)(?:airdrop|presale|ico|token\s+sale)",
-                r"(?i)(?:staking|mining|pool|liquidity)",
-                r"0x[a-fA-F0-9]{40}",
-                r"bc1[a-zA-HJ-NP-Z0-9]{25,39}",
-                r"\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b",
+                # Generic crypto words alone are NOT a scam signal -- require
+                # them paired with promo/free/reward/claim/airdrop context.
+                r"(?i)\bfree\s+(?:crypto|bitcoin|ethereum|usdt|btc|eth)\b",
+                r"(?i)\bclaim\s+(?:your\s+)?(?:crypto|usdt|btc|eth|airdrop|tokens?)\b",
+                r"(?i)\b(?:airdrop|presale|ico|token\s+sale)\b",
+                r"(?i)\bconnect\s+(?:your\s+)?wallet\b",
+                r"0x[a-fA-F0-9]{40}",  # ETH address
+                r"bc1[a-zA-HJ-NP-Z0-9]{25,39}",  # BTC bech32
+                # BTC legacy patterns are too permissive (they false-match
+                # random base58-looking OCR noise), so they were removed.
+                # Use WALLET_PATTERNS in image_scan_service for those.
             ],
             "social_engineering": [
-                r"(?i)(?:friend\s+sent|someone\s+gifted)",
-                r"(?i)(?:share\s+with|tag\s+a\s+friend)",
-                r"(?i)(?:dm\s+me|message\s+me|contact\s+support)",
+                r"(?i)\b(?:a\s+)?friend\s+(?:just\s+)?(?:sent|gifted)\s+you\b",
+                r"(?i)\bsomeone\s+(?:just\s+)?gifted\s+you\b",
+                r"(?i)\btag\s+a\s+friend\s+to\b",
+                r"(?i)\bdm\s+me\s+(?:on|at|for)\b",
             ],
         }
 
@@ -239,9 +263,11 @@ class MessageModerationHandler:
             is_confident = True
         elif blocked_words_hits >= 3:
             is_confident = True
-        elif len(scan_result.reasons) >= 4 and (
-            has_blocked_domain or has_wallet or core_phrase_hits >= 1
-        ):
+        elif len(scan_result.reasons) >= 4 and self._has_strong_signal(scan_result.reasons):
+            # Piling up many weak reasons is not enough on its own -- benign
+            # text-heavy screenshots (support chats, receipts, ToS pages)
+            # easily accumulate 4+ low-weight matches. Require at least one
+            # high-signal category before we accept this fallback.
             is_confident = True
 
 
@@ -401,6 +427,28 @@ class MessageModerationHandler:
             if value > max_hits:
                 max_hits = value
         return max_hits
+
+    # Reason-prefixes that indicate an actual scam signal (not just generic
+    # English text or weak heuristics). If none of these show up, a scan
+    # with many reasons is almost always a false positive on a text-heavy
+    # screenshot.
+    _STRONG_REASON_PREFIXES: tuple[str, ...] = (
+        "blocked_domain",
+        "blocked_words",
+        "core_phrases",
+        "wallet_address",
+        "url_shortener",
+        "promotion_scam",
+    )
+
+    @classmethod
+    def _has_strong_signal(cls, reasons: list[str]) -> bool:
+        """Return True if at least one reason comes from a high-signal category."""
+        return any(
+            reason.startswith(prefix)
+            for reason in reasons
+            for prefix in cls._STRONG_REASON_PREFIXES
+        )
 
     async def _scan_attachment(self, attachment: discord.Attachment):
         """Legacy method - kept for compatibility"""
